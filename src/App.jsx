@@ -244,9 +244,9 @@ function DashView({ brand, projects, onBack, onFoundation, onNew, onOpen, onDele
       return;
     }
     setAnalyzing(true); setAnalMsg("Analyse startet…");
-    const sys = 'You are a brand strategist for AI video production. Analyze the provided brand materials and derive concrete video production guidelines. Respond ONLY with valid JSON, no markdown: {"visualBible":"3-4 sentences about overall aesthetic and cinematic style","styleTokens":"concrete derivations: camera style, lighting, pacing, forbidden elements","assetNotes":"color codes, logo rules, brand guidelines"}';
+    const sys = 'You are a brand strategist for AI video production. Analyze all provided brand materials (PDF, website, screenshots) and derive concrete video production guidelines. CRITICAL: Respond ONLY with a single flat JSON object. All values must be plain strings, never nested objects or arrays. Format: {"visualBible":"Write 3-4 sentences describing the overall aesthetic, mood, and cinematic references as a single paragraph string","styleTokens":"Write concrete guidelines as a single string: camera style, lighting approach, pacing, color grading, forbidden elements","assetNotes":"Write brand rules as a single string: hex color codes, logo usage, typography, dont-dos"}';
     try {
-      const hasPdfOrImg = pdfB64 || shotB64;
+      // Load website content
       let extra = "";
       if (webUrl.trim()) {
         setAnalMsg("Website wird geladen…");
@@ -255,39 +255,53 @@ function DashView({ brand, projects, onBack, onFoundation, onNew, onOpen, onDele
             fetch("https://api.allorigins.win/get?url=" + encodeURIComponent(webUrl)).then(r=>r.json()),
             new Promise((_,rj)=>setTimeout(()=>rj(new Error("timeout")),8000))
           ]);
-          if (r?.contents) extra = r.contents.replace(/<script[\s\S]*?<\/script>/gi,"").replace(/<style[\s\S]*?<\/style>/gi,"").replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim().slice(0,2500);
+          if (r?.contents) extra = r.contents
+            .replace(/<script[\s\S]*?<\/script>/gi,"")
+            .replace(/<style[\s\S]*?<\/style>/gi,"")
+            .replace(/<[^>]+>/g," ")
+            .replace(/\s+/g," ").trim().slice(0,2000);
         } catch(e) { extra = ""; }
       }
       setAnalMsg("KI analysiert…");
-      const textContent = "Analyze the brand and derive video production guidelines." + (webUrl.trim() ? "\nWebsite: " + webUrl + (extra ? "\n" + extra : "") : "");
 
-      let messages;
-      if (hasPdfOrImg) {
-        const contentArr = [];
-        if (pdfB64) contentArr.push({type:"document",source:{type:"base64",media_type:"application/pdf",data:pdfB64}});
-        if (shotB64) contentArr.push({type:"image",source:{type:"base64",media_type:shotType,data:shotB64}});
-        contentArr.push({type:"text",text:textContent});
-        messages = [{role:"user", content: contentArr}];
-      } else {
-        messages = [{role:"user", content: textContent}];
-      }
+      // Build content array - always use array format for consistency
+      const contentArr = [];
+      if (pdfB64) contentArr.push({type:"document", source:{type:"base64", media_type:"application/pdf", data:pdfB64}});
+      if (shotB64) contentArr.push({type:"image", source:{type:"base64", media_type:shotType, data:shotB64}});
+      const textParts = ["Analyze all provided brand materials and respond with the JSON object."];
+      if (webUrl.trim()) textParts.push("Website URL: " + webUrl + (extra ? "\nWebsite content: " + extra : " (could not load content)"));
+      contentArr.push({type:"text", text:textParts.join("\n\n")});
 
-      const res = await callClaude(sys, messages, 1200);
-      console.log("Claude response:", res.slice(0, 200));
+      const messages = [{role:"user", content: contentArr}];
+      const res = await callClaude(sys, messages, 1500);
+      console.log("Claude raw response:", res.slice(0, 300));
+
       const ex = parseJ(res);
-      if (ex && (ex.visualBible || ex.styleTokens || ex.assetNotes)) {
-        const m = {
-          visualBible: ex.visualBible || foundation.visualBible || "",
-          styleTokens: ex.styleTokens || foundation.styleTokens || "",
-          assetNotes:  ex.assetNotes  || foundation.assetNotes  || ""
+      if (ex) {
+        // Flatten any nested objects to strings
+        const flatten = v => {
+          if (!v) return "";
+          if (typeof v === "string") return v;
+          if (typeof v === "object") return Object.entries(v).map(([k,val]) => k + ": " + (typeof val === "object" ? JSON.stringify(val) : val)).join(". ");
+          return String(v);
         };
-        setFoundation(m);
-        await onFoundation(m);
-        setSaved(true);
-        setTimeout(()=>setSaved(false), 2500);
-        setAnalMsg("");
+        const m = {
+          visualBible: flatten(ex.visualBible) || foundation.visualBible || "",
+          styleTokens: flatten(ex.styleTokens) || foundation.styleTokens || "",
+          assetNotes:  flatten(ex.assetNotes)  || foundation.assetNotes  || ""
+        };
+        if (m.visualBible || m.styleTokens || m.assetNotes) {
+          setFoundation(m);
+          await onFoundation(m);
+          setSaved(true);
+          setTimeout(()=>setSaved(false), 2500);
+          setAnalMsg("");
+        } else {
+          setAnalMsg("Leere Antwort erhalten — bitte nochmal versuchen");
+        }
       } else {
-        setAnalMsg("Kein Ergebnis — bitte Konsole prüfen");
+        setAnalMsg("Antwort konnte nicht verarbeitet werden");
+        console.error("Could not parse:", res);
       }
     } catch(e) {
       console.error("Analyze error:", e);
