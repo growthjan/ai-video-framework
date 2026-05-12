@@ -146,8 +146,8 @@ export default function App() {
       {/* Sidebar */}
       <div style={{width:200, flexShrink:0, background:"var(--sidebar)", display:"flex", flexDirection:"column", padding:"0"}}>
         <div style={{padding:"20px 16px 14px", borderBottom:"1px solid rgba(255,255,255,.06)"}}>
-          <div style={{fontSize:13, fontWeight:700, color:"#fff", fontFamily:"Syne, sans-serif", letterSpacing:"-.01em"}}>AI VIDEO</div>
-          <div style={{fontSize:10, color:"rgba(255,255,255,.35)", letterSpacing:".1em", textTransform:"uppercase", marginTop:1}}>Framework</div>
+          <div style={{fontSize:15, fontWeight:800, color:"#fff", fontFamily:"Syne, sans-serif", letterSpacing:".02em"}}>AI VIDEO</div>
+          <div style={{fontSize:9, color:"rgba(255,255,255,.3)", letterSpacing:".12em", textTransform:"uppercase", marginTop:2}}>Production Framework</div>
         </div>
         <div style={{flex:1, padding:"10px 8px", overflowY:"auto"}}>
           {sidebarItems.map(item => (
@@ -274,10 +274,14 @@ function DashView({ brand, projects, onBack, onFoundation, onNew, onOpen, onDele
           <div>
             <FieldLabel>Quellen für automatische Analyse</FieldLabel>
             <div style={{display:"flex",gap:6,marginBottom:8}}>
-              <input ref={pdfRef} type="file" accept="application/pdf" onChange={async e=>{const f=e.target.files[0];if(f){setPdfName(f.name);setPdfB64(await fileToB64(f));}}} style={{display:"none"}} />
+              <input ref={pdfRef} type="file" accept="application/pdf,.doc,.docx" onChange={async e=>{const f=e.target.files[0];if(f){setPdfName(f.name);setPdfB64(await fileToB64(f));}}} style={{display:"none"}} />
               {pdfB64
                 ? <FileTag name={pdfName} onRemove={()=>{setPdfB64(null);setPdfName("");}} />
-                : <button onClick={()=>pdfRef.current?.click()} style={{flex:1,padding:"7px 10px",borderRadius:8,border:`1.5px dashed ${brand.color}66`,background:`${brand.color}08`,color:brand.color,fontSize:11,fontWeight:500,cursor:"pointer"}}>↑ Brand Guide PDF</button>}
+                : <button onClick={()=>pdfRef.current?.click()}
+                    onDragOver={e=>{e.preventDefault();e.currentTarget.style.background=`${brand.color}18`;e.currentTarget.style.borderColor=brand.color;}}
+                    onDragLeave={e=>{e.currentTarget.style.background=`${brand.color}08`;e.currentTarget.style.borderColor=`${brand.color}66`;}}
+                    onDrop={async e=>{e.preventDefault();e.currentTarget.style.background=`${brand.color}08`;e.currentTarget.style.borderColor=`${brand.color}66`;const f=e.dataTransfer.files[0];if(f){setPdfName(f.name);setPdfB64(await fileToB64(f));}}}
+                    style={{flex:1,padding:"7px 10px",borderRadius:8,border:`1.5px dashed ${brand.color}66`,background:`${brand.color}08`,color:brand.color,fontSize:11,fontWeight:500,cursor:"pointer",transition:"background .15s,border-color .15s"}}>↑ Brand Guide PDF / DOC</button>}
               <input value={webUrl} onChange={e=>setWebUrl(e.target.value)} placeholder="🌐 Website-URL" style={{flex:2}} />
             </div>
             <div style={{marginBottom:10}}>
