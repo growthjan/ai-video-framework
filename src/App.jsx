@@ -239,12 +239,14 @@ function DashView({ brand, projects, onBack, onFoundation, onNew, onOpen, onDele
 
   const save = async () => { await onFoundation(foundation); setSaved(true); setTimeout(()=>setSaved(false),2000); };
   const analyze = async () => {
+    if (!pdfB64 && !shotB64 && !webUrl.trim()) {
+      setAnalMsg("Bitte zuerst eine Quelle hinzufügen (PDF, URL oder Screenshot)");
+      return;
+    }
     setAnalyzing(true); setAnalMsg("Analyse startet…");
-    const sys = 'Brand-Stratege fuer AI Video Production. Leite aus Brand-Materialien konkrete Video-Richtlinien ab. Antworte NUR als JSON ohne Markdown: {"visualBible":"3-4 Saetze Gesamtaesthetik","styleTokens":"Konkrete Ableitungen","assetNotes":"Farbcodes und Richtlinien"}';
+    const sys = 'You are a brand strategist for AI video production. Analyze the provided brand materials and derive concrete video production guidelines. Respond ONLY with valid JSON, no markdown: {"visualBible":"3-4 sentences about overall aesthetic and cinematic style","styleTokens":"concrete derivations: camera style, lighting, pacing, forbidden elements","assetNotes":"color codes, logo rules, brand guidelines"}';
     try {
-      const content = [];
-      if (pdfB64) { setAnalMsg("PDF wird analysiert…"); content.push({type:"document",source:{type:"base64",media_type:"application/pdf",data:pdfB64}}); }
-      if (shotB64) content.push({type:"image",source:{type:"base64",media_type:shotType,data:shotB64}});
+      const hasPdfOrImg = pdfB64 || shotB64;
       let extra = "";
       if (webUrl.trim()) {
         setAnalMsg("Website wird geladen…");
@@ -255,13 +257,23 @@ function DashView({ brand, projects, onBack, onFoundation, onNew, onOpen, onDele
           ]);
           if (r?.contents) extra = r.contents.replace(/<script[\s\S]*?<\/script>/gi,"").replace(/<style[\s\S]*?<\/style>/gi,"").replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim().slice(0,2500);
         } catch(e) { extra = ""; }
-        setAnalMsg("KI analysiert…");
       }
-      const textParts = ["Analysiere alle vorhandenen Brand-Materialien und leite Video-Produktionsrichtlinien ab."];
-      if (webUrl.trim()) textParts.push("Website: " + webUrl + (extra ? "\n" + extra : ""));
-      content.push({type:"text",text:textParts.join("\n")});
-      setAnalMsg("Antwort wird verarbeitet…");
-      const res = await callClaude(sys, [{role:"user",content}], 1500);
+      setAnalMsg("KI analysiert…");
+      const textContent = "Analyze the brand and derive video production guidelines." + (webUrl.trim() ? "\nWebsite: " + webUrl + (extra ? "\n" + extra : "") : "");
+
+      let messages;
+      if (hasPdfOrImg) {
+        const contentArr = [];
+        if (pdfB64) contentArr.push({type:"document",source:{type:"base64",media_type:"application/pdf",data:pdfB64}});
+        if (shotB64) contentArr.push({type:"image",source:{type:"base64",media_type:shotType,data:shotB64}});
+        contentArr.push({type:"text",text:textContent});
+        messages = [{role:"user", content: contentArr}];
+      } else {
+        messages = [{role:"user", content: textContent}];
+      }
+
+      const res = await callClaude(sys, messages, 1200);
+      console.log("Claude response:", res.slice(0, 200));
       const ex = parseJ(res);
       if (ex && (ex.visualBible || ex.styleTokens || ex.assetNotes)) {
         const m = {
@@ -275,7 +287,7 @@ function DashView({ brand, projects, onBack, onFoundation, onNew, onOpen, onDele
         setTimeout(()=>setSaved(false), 2500);
         setAnalMsg("");
       } else {
-        setAnalMsg("Kein verwertbares Ergebnis — bitte andere Quelle versuchen");
+        setAnalMsg("Kein Ergebnis — bitte Konsole prüfen");
       }
     } catch(e) {
       console.error("Analyze error:", e);
