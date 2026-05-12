@@ -3,10 +3,59 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AI Video Generator</title>
+    <title>AI Video Framework</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap" rel="stylesheet" />
     <style>
+      :root {
+        --bg: #F2F1EC;
+        --surface: #FFFFFF;
+        --sidebar: #14142B;
+        --sidebar-item: rgba(255,255,255,.06);
+        --sidebar-active: rgba(255,255,255,.12);
+        --text: #18181F;
+        --text-2: #6E6E82;
+        --text-3: #A3A3B5;
+        --border: #E4E3DC;
+        --border-2: #CCCCC0;
+        --accent: #6B57FF;
+        --accent-light: rgba(107,87,255,.1);
+        --lime: #C5EE32;
+        --orange: #FF6B35;
+        --teal: #00C896;
+        --red: #FF4444;
+        --shadow-sm: 0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+        --shadow: 0 4px 12px rgba(0,0,0,.07), 0 1px 3px rgba(0,0,0,.04);
+        --shadow-lg: 0 12px 40px rgba(0,0,0,.1), 0 4px 12px rgba(0,0,0,.06);
+        --radius: 10px;
+        --radius-lg: 14px;
+      }
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-      body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #fff; color: #1a1a19; }
+      html, body { height: 100%; }
+      body { font-family: "DM Sans", -apple-system, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+      #root { height: 100%; }
+      input, textarea, select {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 7px 10px;
+        font-size: 13px;
+        outline: none;
+        background: var(--surface);
+        color: var(--text);
+        font-family: inherit;
+        transition: border-color .15s, box-shadow .15s;
+        width: 100%;
+        box-sizing: border-box;
+      }
+      input:focus, textarea:focus, select:focus {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px var(--accent-light);
+      }
+      textarea { resize: vertical; }
+      ::-webkit-scrollbar { width: 5px; height: 5px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 99px; }
     </style>
   </head>
   <body>
