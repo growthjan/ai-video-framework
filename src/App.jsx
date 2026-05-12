@@ -630,7 +630,7 @@ function ProjView({ proj, brand, qfEnabled, onQfToggle, onBack, onSave, setP, on
               {sparSend&&<div style={{display:"flex",gap:7}}><div style={{width:22,height:22,borderRadius:"50%",background:ct.bg,flexShrink:0}} /><div style={{fontSize:12,padding:"7px 10px",borderRadius:10,background:ct.bg,border:`1px solid ${ct.col}33`,display:"flex",gap:3,alignItems:"center"}}><Dots /></div></div>}
               <div ref={sparRef} />
             </div>
-            <div style={{borderTop:"1px solid var(--border)",padding:"8px 12px",display:"flex",gap:6"}}>
+            <div style={{borderTop:"1px solid var(--border)",padding:"8px 12px",display:"flex",gap:6}}>
               <input value={sparIn} onChange={e=>setSparIn(e.target.value)} onKeyDown={e=>e.key==="Enter"&&!e.shiftKey&&(e.preventDefault(),sendSpar(sparIn))} disabled={sparSend} placeholder="Reagieren… (Enter)" style={{flex:1}} />
               <BtnPrimary onClick={()=>sendSpar(sparIn)} col={ct.col} style={{width:"auto",padding:"0 12px",opacity:sparSend?0.5:1}}>→</BtnPrimary>
             </div>
