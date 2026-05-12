@@ -319,8 +319,8 @@ function DashView({ brand, projects, onBack, onFoundation, onNew, onOpen, onDele
             </div>
             {analyzing
               ? <StatusBar msg={analMsg} col={brand.color} />
-              : <BtnPrimary onClick={analyze} col={brand.color} style={{marginBottom:10, opacity: hasSrc ? 1 : 0.4}}>✦ Automatisch befüllen</BtnPrimary>
-              : analMsg ? <div style={{fontSize:11,color:"var(--orange)",marginBottom:10}}>{analMsg}</div> : null}
+              : hasSrc ? <BtnPrimary onClick={analyze} col={brand.color} style={{marginBottom:10}}>✦ Automatisch befüllen</BtnPrimary>
+              : analMsg ? <div style={{fontSize:11,color:"var(--orange)",marginBottom:10}}>{analMsg}</div> : <BtnPrimary onClick={analyze} col={brand.color} style={{marginBottom:10,opacity:0.45}}>✦ Automatisch befüllen</BtnPrimary>}
             <Divider />
             <Fld label="Visual Bible" rows={3} value={foundation.visualBible||""} onChange={v=>setFoundation(f=>({...f,visualBible:v}))} placeholder="Gesamtästhetik, Stimmung, Referenzen…" />
             <Fld label="Style Tokens" rows={2} value={foundation.styleTokens||""} onChange={v=>setFoundation(f=>({...f,styleTokens:v}))} placeholder="Kamerastil, Licht, Pacing…" />
