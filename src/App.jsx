@@ -239,22 +239,48 @@ function DashView({ brand, projects, onBack, onFoundation, onNew, onOpen, onDele
 
   const save = async () => { await onFoundation(foundation); setSaved(true); setTimeout(()=>setSaved(false),2000); };
   const analyze = async () => {
-    setAnalyzing(true); setAnalMsg("Analyse läuft…");
-    const sys=`Brand-Stratege für AI Video. Leite konkrete Video-Richtlinien ab. Antworte NUR als JSON: {"visualBible":"3-4 Sätze","styleTokens":"Ableitungen","assetNotes":"Farbcodes"}`;
-    const content=[];
-    if(pdfB64){setAnalMsg("PDF wird gelesen…");content.push({type:"document",source:{type:"base64",media_type:"application/pdf",data:pdfB64}});}
-    if(shotB64) content.push({type:"image",source:{type:"base64",media_type:shotType,data:shotB64}});
-    let webCtx="";
-    if(webUrl.trim()){setAnalMsg("Website…");try{const r=await Promise.race([fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(webUrl)}`).then(r=>r.json()),new Promise((_,rj)=>setTimeout(()=>rj(),9000))]);if(r?.contents)webCtx=r.contents.replace(/<script[\s\S]*?<\/script>/gi,"").replace(/<style[\s\S]*?<\/style>/gi,"").replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim().slice(0,2500);}catch{}}
-    content.push({type:"text",text:`Analysiere alle Brand-Materialien.${webUrl?`\nWebsite: ${webUrl}${webCtx?`\n${webCtx}`:""}`:""}`});
-    setAnalMsg("KI analysiert…");
+    setAnalyzing(true); setAnalMsg("Analyse startet…");
+    const sys = 'Brand-Stratege fuer AI Video Production. Leite aus Brand-Materialien konkrete Video-Richtlinien ab. Antworte NUR als JSON ohne Markdown: {"visualBible":"3-4 Saetze Gesamtaesthetik","styleTokens":"Konkrete Ableitungen","assetNotes":"Farbcodes und Richtlinien"}';
     try {
-      const res=await callClaude(sys,[{role:"user",content}],1200);
-      const ex=parseJ(res);
-      if(ex){const m={visualBible:ex.visualBible||foundation.visualBible,styleTokens:ex.styleTokens||foundation.styleTokens,assetNotes:ex.assetNotes||foundation.assetNotes};setFoundation(m);await onFoundation(m);setSaved(true);setTimeout(()=>setSaved(false),2000);}
-      else setAnalMsg("Kein Ergebnis — andere Quellen versuchen");
-    } catch(e){setAnalMsg(`Fehler: ${e.message}`);}
-    setAnalyzing(false); setTimeout(()=>setAnalMsg(""),3000);
+      const content = [];
+      if (pdfB64) { setAnalMsg("PDF wird analysiert…"); content.push({type:"document",source:{type:"base64",media_type:"application/pdf",data:pdfB64}}); }
+      if (shotB64) content.push({type:"image",source:{type:"base64",media_type:shotType,data:shotB64}});
+      let extra = "";
+      if (webUrl.trim()) {
+        setAnalMsg("Website wird geladen…");
+        try {
+          const r = await Promise.race([
+            fetch("https://api.allorigins.win/get?url=" + encodeURIComponent(webUrl)).then(r=>r.json()),
+            new Promise((_,rj)=>setTimeout(()=>rj(new Error("timeout")),8000))
+          ]);
+          if (r?.contents) extra = r.contents.replace(/<script[\s\S]*?<\/script>/gi,"").replace(/<style[\s\S]*?<\/style>/gi,"").replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim().slice(0,2500);
+        } catch(e) { extra = ""; }
+        setAnalMsg("KI analysiert…");
+      }
+      const textParts = ["Analysiere alle vorhandenen Brand-Materialien und leite Video-Produktionsrichtlinien ab."];
+      if (webUrl.trim()) textParts.push("Website: " + webUrl + (extra ? "\n" + extra : ""));
+      content.push({type:"text",text:textParts.join("\n")});
+      setAnalMsg("Antwort wird verarbeitet…");
+      const res = await callClaude(sys, [{role:"user",content}], 1500);
+      const ex = parseJ(res);
+      if (ex && (ex.visualBible || ex.styleTokens || ex.assetNotes)) {
+        const m = {
+          visualBible: ex.visualBible || foundation.visualBible || "",
+          styleTokens: ex.styleTokens || foundation.styleTokens || "",
+          assetNotes:  ex.assetNotes  || foundation.assetNotes  || ""
+        };
+        setFoundation(m);
+        await onFoundation(m);
+        setSaved(true);
+        setTimeout(()=>setSaved(false), 2500);
+        setAnalMsg("");
+      } else {
+        setAnalMsg("Kein verwertbares Ergebnis — bitte andere Quelle versuchen");
+      }
+    } catch(e) {
+      setAnalMsg("Fehler: " + e.message);
+    }
+    setAnalyzing(false);
   };
 
   return (
