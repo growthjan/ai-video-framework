@@ -3,7 +3,7 @@ import { supabase } from "./lib/supabase";
 
 // ─── API ──────────────────────────────────────────────────────────────────────
 const callClaude = async (system, messages, maxTokens = 1500) => {
-  const r = await fetch("/api/claude", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:maxTokens, system, messages }) });
+  const r = await fetch("/api/claude", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ model:"claude-sonnet-4-5", max_tokens:maxTokens, system, messages }) });
   const d = await r.json();
   if (d.error) throw new Error(d.error.message || JSON.stringify(d.error));
   return d.content?.[0]?.text ?? "";
@@ -146,7 +146,7 @@ export default function App() {
       {/* Sidebar */}
       <div style={{width:200, flexShrink:0, background:"var(--sidebar)", display:"flex", flexDirection:"column", padding:"0"}}>
         <div style={{padding:"20px 16px 14px", borderBottom:"1px solid rgba(255,255,255,.06)"}}>
-          <div style={{fontSize:15, fontWeight:800, color:"#fff", fontFamily:"Syne, sans-serif", letterSpacing:".02em"}}>AI VIDEO</div>
+          <div style={{fontSize:14, fontWeight:700, color:"#fff", fontFamily:"Syne, sans-serif", letterSpacing:".04em"}}>AI VIDEO</div>
           <div style={{fontSize:9, color:"rgba(255,255,255,.3)", letterSpacing:".12em", textTransform:"uppercase", marginTop:2}}>Production Framework</div>
         </div>
         <div style={{flex:1, padding:"10px 8px", overflowY:"auto"}}>
@@ -278,6 +278,7 @@ function DashView({ brand, projects, onBack, onFoundation, onNew, onOpen, onDele
         setAnalMsg("Kein verwertbares Ergebnis — bitte andere Quelle versuchen");
       }
     } catch(e) {
+      console.error("Analyze error:", e);
       setAnalMsg("Fehler: " + e.message);
     }
     setAnalyzing(false);
@@ -318,7 +319,7 @@ function DashView({ brand, projects, onBack, onFoundation, onNew, onOpen, onDele
             </div>
             {analyzing
               ? <StatusBar msg={analMsg} col={brand.color} />
-              : hasSrc ? <BtnPrimary onClick={analyze} col={brand.color} style={{marginBottom:10}}>✦ Automatisch befüllen</BtnPrimary>
+              : <BtnPrimary onClick={analyze} col={brand.color} style={{marginBottom:10, opacity: hasSrc ? 1 : 0.4}}>✦ Automatisch befüllen</BtnPrimary>
               : analMsg ? <div style={{fontSize:11,color:"var(--orange)",marginBottom:10}}>{analMsg}</div> : null}
             <Divider />
             <Fld label="Visual Bible" rows={3} value={foundation.visualBible||""} onChange={v=>setFoundation(f=>({...f,visualBible:v}))} placeholder="Gesamtästhetik, Stimmung, Referenzen…" />
@@ -757,7 +758,7 @@ function ProjView({ proj, brand, qfEnabled, onQfToggle, onBack, onSave, setP, on
 function PageHeader({ title, sub, col }) {
   return (
     <div style={{marginBottom:24}}>
-      <div style={{fontSize:22,fontWeight:800,fontFamily:"Syne, sans-serif",letterSpacing:"-.02em",display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
+      <div style={{fontSize:26,fontWeight:700,fontFamily:"Syne, sans-serif",letterSpacing:"-.01em",display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
         {col&&<div style={{width:10,height:10,borderRadius:"50%",background:col,flexShrink:0}} />}
         {title}
       </div>
