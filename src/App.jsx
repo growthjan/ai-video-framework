@@ -3,7 +3,7 @@ import { supabase } from "./lib/supabase";
 
 // ─── API ──────────────────────────────────────────────────────────────────────
 const callClaude = async (system, messages, maxTokens = 1500) => {
-  const r = await fetch("/api/claude", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ model:"claude-sonnet-4-5", max_tokens:maxTokens, system, messages }) });
+  const r = await fetch("/api/claude", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:maxTokens, system, messages }) });
   const d = await r.json();
   if (d.error) throw new Error(d.error.message || JSON.stringify(d.error));
   return d.content?.[0]?.text ?? "";
@@ -244,7 +244,7 @@ function DashView({ brand, projects, onBack, onFoundation, onNew, onOpen, onDele
       return;
     }
     setAnalyzing(true); setAnalMsg("Analyse startet…");
-    const sys = 'You are a brand strategist for AI video production. Analyze all provided brand materials (PDF, website, screenshots) and derive concrete video production guidelines. CRITICAL: Respond ONLY with a single flat JSON object. All values must be plain strings, never nested objects or arrays. Format: {"visualBible":"Write 3-4 sentences describing the overall aesthetic, mood, and cinematic references as a single paragraph string","styleTokens":"Write concrete guidelines as a single string: camera style, lighting approach, pacing, color grading, forbidden elements","assetNotes":"Write brand rules as a single string: hex color codes, logo usage, typography, dont-dos"}';
+    const sys = 'You are a brand strategist for AI video production. Carefully analyze all provided brand materials. Extract SPECIFIC information: exact hex color codes, exact font names, specific do's and don'ts, logo rules. CRITICAL: Respond ONLY with a single flat JSON object, no markdown, no explanation, just JSON. All 3 values must be plain text strings. Example format: {"visualBible":"Warm earthy aesthetic inspired by nature. Soft diffused lighting, slow panning shots, close-up texture details. Cinematic references: Terrence Malick natural light style.","styleTokens":"Camera: slow smooth movements, macro/close-up product shots. Lighting: soft natural daylight, avoid harsh shadows. Pacing: calm 3-5s shots. Forbidden: fast cuts, neon colors, dark moody lighting.","assetNotes":"Primary: #2E5D3A (forest green), #F5E6D3 (cream), #8B4513 (brown). Fonts: Playfair Display (headlines), Lato (body). Logo: minimum 40px, always on light backgrounds. No gradients."}';
     try {
       // Load website content
       let extra = "";
