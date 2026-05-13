@@ -240,83 +240,88 @@ function DashView({ brand, projects, onBack, onFoundation, onNew, onOpen, onDele
   const save = async () => { await onFoundation(foundation); setSaved(true); setTimeout(()=>setSaved(false),2000); };
   const analyze = async () => {
     if (!pdfB64 && !shotB64 && !webUrl.trim()) {
-      setAnalMsg("Bitte zuerst eine Quelle hinzufügen (PDF, URL oder Screenshot)");
+      setAnalMsg("Bitte zuerst PDF, URL oder Screenshot hinzufügen");
       return;
     }
-    setAnalyzing(true); setAnalMsg("Analyse startet…");
-    const sys = "You are a brand strategist for AI video production. Carefully analyze all provided brand materials. Extract SPECIFIC information: exact hex color codes, exact font names, specific dos and donts, logo rules. CRITICAL: Respond ONLY with a single flat JSON object, no markdown, no explanation, just JSON. All 3 values must be plain text strings. Example: {\"visualBible\":\"Warm earthy aesthetic. Soft diffused lighting, slow panning shots.\",\"styleTokens\":\"Camera: slow smooth movements, macro shots. Lighting: soft natural daylight. Pacing: calm 3-5s shots. Forbidden: fast cuts, neon colors.\",\"assetNotes\":\"Primary: #2E5D3A, #F5E6D3. Fonts: Playfair Display, Lato. Logo: min 40px, light backgrounds only.\"}";
+    setAnalyzing(true);
+    setAnalMsg("Startet…");
     try {
-      // Load website content
-      let extra = "";
+      // Load website if URL given
+      let webText = "";
       if (webUrl.trim()) {
-        setAnalMsg("Website wird geladen…");
+        setAnalMsg("Website laden…");
         try {
           const r = await Promise.race([
-            fetch("https://api.allorigins.win/get?url=" + encodeURIComponent(webUrl)).then(r=>r.json()),
-            new Promise((_,rj)=>setTimeout(()=>rj(new Error("timeout")),8000))
+            fetch("https://api.allorigins.win/get?url=" + encodeURIComponent(webUrl)).then(r => r.json()),
+            new Promise((_, rj) => setTimeout(() => rj(new Error("timeout")), 8000))
           ]);
-          if (r?.contents) extra = r.contents
-            .replace(/<script[\s\S]*?<\/script>/gi,"")
-            .replace(/<style[\s\S]*?<\/style>/gi,"")
-            .replace(/<[^>]+>/g," ")
-            .replace(/\s+/g," ").trim().slice(0,2000);
-        } catch(e) { extra = ""; }
+          if (r?.contents) webText = r.contents
+            .replace(/<script[\s\S]*?<\/script>/gi, "")
+            .replace(/<style[\s\S]*?<\/style>/gi, "")
+            .replace(/<[^>]+>/g, " ")
+            .replace(/\s+/g, " ").trim().slice(0, 2000);
+        } catch (e) { webText = ""; }
       }
-      setAnalMsg("KI analysiert…");
 
-      // Build content array - always use array format for consistency
-      const textParts = ["Analyze all provided brand materials and respond with the JSON object."];
-      if (webUrl.trim()) textParts.push("Website URL: " + webUrl + (extra ? "\nWebsite content: " + extra : " (could not load content)"));
+      // Build message content
+      setAnalMsg("KI analysiert…");
       const contentArr = [];
       if (pdfB64) {
-        // Claude API only supports PDFs as documents, not docx
         const isPdf = pdfMtype === "application/pdf" || pdfName.toLowerCase().endsWith(".pdf");
         if (isPdf) {
-          contentArr.push({type:"document", source:{type:"base64", media_type:"application/pdf", data:pdfB64}});
-        } else {
-          textParts.push("Note: A brand guide document was uploaded (" + pdfName + ") but could not be read directly. Please use the website URL for analysis.");
+          contentArr.push({ type: "document", source: { type: "base64", media_type: "application/pdf", data: pdfB64 } });
         }
       }
-      if (shotB64) contentArr.push({type:"image", source:{type:"base64", media_type:shotType, data:shotB64}});
-      contentArr.push({type:"text", text:textParts.join("\n\n")});
+      if (shotB64) contentArr.push({ type: "image", source: { type: "base64", media_type: shotType, data: shotB64 } });
+      let textMsg = "Analyze this brand guide thoroughly. Extract ALL of the following:\n1. Exact hex color codes (e.g. #BF034B)\n2. Exact font/typeface names\n3. Logo usage rules\n4. Visual dos and donts\n5. Photography/imagery style\n6. Tone of voice rules\n\nRespond ONLY with this exact JSON (no markdown, no extra text):\n{\"visualBible\":\"[3-4 sentences: overall aesthetic, imagery style, mood, cinematic feel]\",\"styleTokens\":\"[camera style, lighting, pacing, color grading, what to avoid — all as one text block]\",\"assetNotes\":\"[exact hex codes, exact font names, logo rules, dos and donts — all as one text block]\"}";
+      if (webUrl.trim()) textMsg += "\n\nWebsite: " + webUrl + (webText ? "\n" + webText : "");
+      contentArr.push({ type: "text", text: textMsg });
 
-      const messages = [{role:"user", content: contentArr}];
-      const res = await callClaude(sys, messages, 1500);
-      console.log("Claude raw response:", res.slice(0, 300));
+      // Call Claude
+      const messages = [{ role: "user", content: contentArr }];
+      const sys = "You are a brand strategist. Extract specific, actionable brand guidelines from the provided materials. Always respond with valid JSON only.";
+      const res = await callClaude(sys, messages, 2000);
+      console.log("Claude response:", res.slice(0, 400));
 
+      // Parse response
       const ex = parseJ(res);
-      if (ex) {
-        // Flatten any nested objects to strings
-        const flatten = v => {
-          if (!v) return "";
-          if (typeof v === "string") return v;
-          if (typeof v === "object") return Object.entries(v).map(([k,val]) => k + ": " + (typeof val === "object" ? JSON.stringify(val) : val)).join(". ");
-          return String(v);
-        };
-        const m = {
-          visualBible: flatten(ex.visualBible) || foundation.visualBible || "",
-          styleTokens: flatten(ex.styleTokens) || foundation.styleTokens || "",
-          assetNotes:  flatten(ex.assetNotes)  || foundation.assetNotes  || ""
-        };
-        if (m.visualBible || m.styleTokens || m.assetNotes) {
-          setFoundation(m);
-          await onFoundation(m);
-          setSaved(true);
-          setTimeout(()=>setSaved(false), 2500);
-          setAnalMsg("");
-        } else {
-          setAnalMsg("Leere Antwort erhalten — bitte nochmal versuchen");
-        }
-      } else {
-        setAnalMsg("Antwort konnte nicht verarbeitet werden");
-        console.error("Could not parse:", res);
+      if (!ex) {
+        setAnalMsg("Fehler: Antwort konnte nicht verarbeitet werden. Antwort: " + res.slice(0, 100));
+        setAnalyzing(false);
+        return;
       }
-    } catch(e) {
+
+      const flatten = v => {
+        if (!v) return "";
+        if (typeof v === "string") return v;
+        if (Array.isArray(v)) return v.join(". ");
+        if (typeof v === "object") return Object.entries(v).map(([k, val]) => k + ": " + val).join(". ");
+        return String(v);
+      };
+
+      const m = {
+        visualBible: flatten(ex.visualBible) || "",
+        styleTokens: flatten(ex.styleTokens) || "",
+        assetNotes:  flatten(ex.assetNotes)  || ""
+      };
+
+      if (m.visualBible || m.styleTokens || m.assetNotes) {
+        setFoundation(m);
+        await onFoundation(m);
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2500);
+        setAnalMsg("");
+      } else {
+        setAnalMsg("Leere Antwort — bitte nochmal versuchen");
+      }
+    } catch (e) {
       console.error("Analyze error:", e);
       setAnalMsg("Fehler: " + e.message);
     }
     setAnalyzing(false);
   };
+
+;
 
   return (
     <div style={{padding:"32px 36px", maxWidth:700}}>
