@@ -164,28 +164,27 @@ export default function App() {
 
   if (!ready) return <Spin msg="Wird geladen…" />;
 
-  const sidebarItems = [
-    { id:"brands", label:"Brands", icon:"◈", onClick:()=>setView("brands") },
-    ...(activeBrand ? [{ id:"dashboard", label:activeBrand.name, icon:"◉", onClick:()=>setView("dashboard"), color:activeBrand.color }] : []),
-    ...(proj ? [{ id:"project", label:proj.proj?.name||"Projekt", icon:"◎", onClick:()=>setView("project") }] : []),
-  ];
-
   return (
     <div style={{display:"flex", height:"100vh", overflow:"hidden", background:"var(--bg)"}}>
       {/* Sidebar */}
-      <div style={{width:200, flexShrink:0, background:"var(--sidebar)", display:"flex", flexDirection:"column", padding:"0"}}>
+      <div style={{width:210, flexShrink:0, background:"var(--sidebar)", display:"flex", flexDirection:"column"}}>
         <div style={{padding:"20px 16px 14px", borderBottom:"1px solid rgba(255,255,255,.06)"}}>
           <div style={{fontSize:14, fontWeight:700, color:"#fff", fontFamily:"Syne, sans-serif", letterSpacing:".04em"}}>AI VIDEO</div>
           <div style={{fontSize:9, color:"rgba(255,255,255,.3)", letterSpacing:".12em", textTransform:"uppercase", marginTop:2}}>Production Framework</div>
         </div>
-        <div style={{flex:1, padding:"10px 8px", overflowY:"auto"}}>
-          {sidebarItems.map(item => (
-            <button key={item.id} onClick={item.onClick} style={{width:"100%", display:"flex", alignItems:"center", gap:8, padding:"7px 8px", borderRadius:7, border:"none", background:view===item.id?"var(--sidebar-active)":"transparent", color:view===item.id?"#fff":"rgba(255,255,255,.5)", cursor:"pointer", fontSize:12, fontFamily:"inherit", textAlign:"left", marginBottom:1, transition:"background .15s,color .15s"}}>
-              <span style={{fontSize:9, opacity:.6}}>{item.icon}</span>
-              <span style={{flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{item.label}</span>
-              {item.color && <span style={{width:6, height:6, borderRadius:"50%", background:item.color, flexShrink:0}} />}
-            </button>
-          ))}
+        <div style={{flex:1, padding:"8px", overflowY:"auto"}}>
+          {/* Brands */}
+          <SideItem active={view==="brands"} onClick={()=>setView("brands")} icon="◈" label="Brands" />
+          {/* Active brand */}
+          {activeBrand && (
+            <>
+              <SideItem active={view==="dashboard"} onClick={()=>setView("dashboard")} icon="◉" label={activeBrand.name} color={activeBrand.color} indent={1} />
+              {/* Active project */}
+              {proj && (
+                <SideItem active={view==="project"} onClick={()=>setView("project")} icon="◎" label={proj.proj?.name||"Projekt"} indent={2} />
+              )}
+            </>
+          )}
         </div>
         <div style={{padding:"10px 8px", borderTop:"1px solid rgba(255,255,255,.06)"}}>
           <div style={{fontSize:10, color:"rgba(255,255,255,.2)", padding:"4px 8px"}}>v2.0</div>
@@ -584,8 +583,16 @@ function ProjView({ proj, brand, qfEnabled, onQfToggle, onBack, onSave, setP, on
     const prod=proj.productData?.analyzed;
     const pCtx=prod?`${prod.productName||""}, ${(prod.colors||[]).join(", ")}, ${prod.suggestedDescription||""}`.trim():proj.proj?.product||"";
     try {
-      setLoadMsg("Brief erstellen…");
+      setLoadMsg("Video-Konzept erstellen…");
       const brief=parseJ(await claudeS(`Creative director for AI video. Type: ${proj.contentType}. Brand: ${JSON.stringify(brand.foundation)}. Product: ${JSON.stringify(prod)}. Respond ONLY as JSON: {"coreMessage":"","emotion":"","visualDirection":"","cta":""}`,`Goal: ${proj.proj?.goal||"Awareness"} | Platform: ${proj.proj?.platform||"Instagram"} | Product: ${proj.proj?.product}`,600))||{};
+
+      setLoadMsg("Synopsis schreiben…");
+      const synopsis = await claudeS(
+        `You are a creative director writing a video brief synopsis. Be vivid and specific. Write in German. Max 4 sentences.`,
+        `Write a short synopsis for this video:\nProduct: ${pCtx}\nType: ${proj.contentType}\nGoal: ${proj.proj?.goal||"Awareness"}\nBrief: ${JSON.stringify(brief)}\n\nDescribe: What does the viewer see and feel? What is the overall mood and visual style? What happens across the scenes?`,
+        400
+      );
+
       setLoadMsg("Szenen entwickeln…");
       const scenes=parseJ(await claudeS(`Scene writer for AI video. Content: ${proj.contentType}. Brief: ${JSON.stringify(brief)}. Product: ${JSON.stringify(prod)}. Brand: ${brand.foundation?.styleTokens}.${ansCtx}. Respond ONLY as JSON array: [{"id":1,"duration":"~3s","setting":"","action":"","camera":"","lighting":"","mood":"","productPlacement":""}]`,`Create exactly ${proj.sceneCount||5} scenes.`,2500));
       if(!scenes?.length) throw new Error("Szenen konnten nicht erstellt werden");
@@ -598,7 +605,7 @@ function ProjView({ proj, brand, qfEnabled, onQfToggle, onBack, onSave, setP, on
       const vidModel=VID_MODELS[proj.videoTool||"kling-v2.6-pro-i2v"];
       const videoPrompts=parseJ(await claudeS(`${vidModel?.name||"Kling"} video prompt specialist. Content: ${proj.contentType}. Brand: ${brand.foundation?.styleTokens||"cinematic"}. MANDATORY: camera+action+light in one sentence. English. Respond ONLY as JSON array: [{"sceneId":1,"prompt":"...","negativePrompt":"","duration":"4"}]`,`Scenes: ${JSON.stringify(sc)}`,3000));
       if(!videoPrompts?.length) throw new Error("Video-Prompts fehlgeschlagen");
-      await onSave({...proj,brief,scenes,keyframes,videoPrompts,sceneAnswers:answers||null});
+      await onSave({...proj,brief,synopsis,scenes,keyframes,videoPrompts,sceneAnswers:answers||null});
     } catch(e){await err(`Fehler: ${e.message}`);}
     setLoading(false);
   };
@@ -836,6 +843,14 @@ function ProjView({ proj, brand, qfEnabled, onQfToggle, onBack, onSave, setP, on
           </Card>
         )}
 
+        {/* Synopsis */}
+        {proj.synopsis && (
+          <div style={{background:"linear-gradient(135deg,var(--accent-light),rgba(0,200,150,.06))",border:"1px solid rgba(107,87,255,.2)",borderRadius:"var(--radius-lg)",padding:"14px 16px",marginBottom:14}}>
+            <div style={{fontSize:9,fontWeight:700,letterSpacing:".1em",textTransform:"uppercase",color:"var(--accent)",marginBottom:6}}>Video-Synopsis</div>
+            <p style={{fontSize:13,lineHeight:1.7,color:"var(--text)",margin:0}}>{proj.synopsis}</p>
+          </div>
+        )}
+
         {/* Scenes */}
         {(proj.scenes||[]).map(scene=>{
           const kf=(proj.keyframes||[]).find(k=>k.sceneId===scene.id);
@@ -920,6 +935,18 @@ function ProjView({ proj, brand, qfEnabled, onQfToggle, onBack, onSave, setP, on
 }
 
 // ─── Design System ────────────────────────────────────────────────────────────
+function SideItem({ active, onClick, icon, label, color, indent=0 }) {
+  return (
+    <button onClick={onClick} style={{width:"100%",display:"flex",alignItems:"center",gap:7,padding:"6px 8px",paddingLeft:8+indent*12,borderRadius:7,border:"none",background:active?"var(--sidebar-active)":"transparent",color:active?"#fff":"rgba(255,255,255,.5)",cursor:"pointer",fontSize:12,fontFamily:"inherit",textAlign:"left",marginBottom:1,transition:"background .15s,color .15s"}}
+      onMouseEnter={e=>{if(!active)e.currentTarget.style.background="var(--sidebar-item)";}} onMouseLeave={e=>{if(!active)e.currentTarget.style.background="transparent";}}>
+      {indent>0 && <span style={{color:"rgba(255,255,255,.15)",fontSize:8}}>{'└'}</span>}
+      <span style={{fontSize:8,opacity:.5}}>{icon}</span>
+      <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{label}</span>
+      {color && <span style={{width:6,height:6,borderRadius:"50%",background:color,flexShrink:0}}/>}
+    </button>
+  );
+}
+
 function PageHeader({ title, sub, col }) {
   return (
     <div style={{marginBottom:24}}>
