@@ -1,6 +1,27 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "./lib/supabase";
 
+// ─── PDF Text Extractor (client-side, no size limits) ────────────────────────
+const extractPdfText = async (file) => {
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    // Dynamic import of PDF.js from CDN
+    const pdfjsLib = await import("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.min.mjs");
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.worker.min.mjs";
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    let text = "";
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      text += content.items.map(item => item.str).join(" ") + "\n";
+    }
+    return text.trim().slice(0, 15000); // Max 15k chars
+  } catch (e) {
+    console.error("PDF extraction failed:", e);
+    return null;
+  }
+};
+
 // ─── API ──────────────────────────────────────────────────────────────────────
 const callClaude = async (system, messages, maxTokens = 1500) => {
   const r = await fetch("/api/claude", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:maxTokens, system, messages }) });
@@ -231,7 +252,7 @@ function DashView({ brand, projects, onBack, onFoundation, onNew, onOpen, onDele
   const [saved, setSaved] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [analMsg, setAnalMsg] = useState("");
-  const [pdfB64, setPdfB64] = useState(null); const [pdfName, setPdfName] = useState(""); const [pdfMtype, setPdfMtype] = useState("application/pdf");
+  const [pdfB64, setPdfB64] = useState(null); const [pdfName, setPdfName] = useState(""); const [pdfMtype, setPdfMtype] = useState("application/pdf"); const [pdfText, setPdfText] = useState(null);
   const [webUrl, setWebUrl] = useState("");
   const [shotB64, setShotB64] = useState(null); const [shotType, setShotType] = useState("");
   const pdfRef=useRef(); const shotRef=useRef();
@@ -269,7 +290,13 @@ function DashView({ brand, projects, onBack, onFoundation, onNew, onOpen, onDele
       if (pdfB64) {
         const isPdf = pdfMtype === "application/pdf" || pdfName.toLowerCase().endsWith(".pdf");
         if (isPdf) {
-          contentArr.push({ type: "document", source: { type: "base64", media_type: "application/pdf", data: pdfB64 } });
+          if (pdfText) {
+            // Use extracted text (avoids Vercel 4.5MB limit)
+            textMsg += "\n\nBrand Guide PDF content:\n" + pdfText;
+          } else {
+            // Fallback: send as binary document (works for small PDFs)
+            contentArr.push({ type: "document", source: { type: "base64", media_type: "application/pdf", data: pdfB64 } });
+          }
         }
       }
       if (shotB64) contentArr.push({ type: "image", source: { type: "base64", media_type: shotType, data: shotB64 } });
@@ -340,9 +367,9 @@ function DashView({ brand, projects, onBack, onFoundation, onNew, onOpen, onDele
           <div>
             <FieldLabel>Quellen für automatische Analyse</FieldLabel>
             <div style={{display:"flex",gap:6,marginBottom:8}}>
-              <input ref={pdfRef} type="file" accept="application/pdf,.doc,.docx" onChange={async e=>{const f=e.target.files[0];if(f){setPdfName(f.name);setPdfMtype(f.type||'application/pdf');setPdfB64(await fileToB64(f));}}} style={{display:"none"}} />
+              <input ref={pdfRef} type="file" accept="application/pdf,.doc,.docx" onChange={async e=>{const f=e.target.files[0];if(f){setPdfName(f.name);setPdfMtype(f.type||'application/pdf');setPdfB64(await fileToB64(f));const txt=await extractPdfText(f);setPdfText(txt);}}} style={{display:"none"}} />
               {pdfB64
-                ? <FileTag name={pdfName} onRemove={()=>{setPdfB64(null);setPdfName("");}} />
+                ? <FileTag name={pdfName} onRemove={()=>{setPdfB64(null);setPdfName("");setPdfText(null);}} />
                 : <button onClick={()=>pdfRef.current?.click()}
                     onDragOver={e=>{e.preventDefault();e.currentTarget.style.background=`${brand.color}18`;e.currentTarget.style.borderColor=brand.color;}}
                     onDragLeave={e=>{e.currentTarget.style.background=`${brand.color}08`;e.currentTarget.style.borderColor=`${brand.color}66`;}}
