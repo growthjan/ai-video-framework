@@ -539,7 +539,7 @@ function ProjView({ proj, brand, qfEnabled, onQfToggle, onBack, onSave, setP, on
       try {
         const res = await callClaude(
           `Product analyst for AI video ads. Analyze this product and respond ONLY as JSON: {"productName":"","colors":[],"usps":["","","","",""],"suggestedDescription":"1-2 sentences","mockupPrompts":[{"setting":"Studio","prompt":""},{"setting":"Lifestyle","prompt":""},{"setting":"Abstract","prompt":""}]}`,
-          mc, 700
+          [{role:"user", content: mc}], 700
         );
         const a = parseJ(res) || {suggestedDescription: title, usps:[], colors:[], mockupPrompts:[]};
         const {mockupPrompts, ...analyzed} = a;
