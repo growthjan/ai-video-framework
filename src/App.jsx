@@ -478,27 +478,74 @@ function ProjView({ proj, brand, qfEnabled, onQfToggle, onBack, onSave, setP, on
   const copy = (text,id) => { navigator.clipboard.writeText(text).catch(()=>{}); setCopied(id); setTimeout(()=>setCopied(""),2000); };
   const err = async msg => { setLoadMsg(msg); await sleep(2500); };
 
+  const fetchPageHtml = async (url) => {
+    const proxies = [
+      u => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`,
+      u => `https://corsproxy.io/?${encodeURIComponent(u)}`,
+      u => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
+    ];
+    for (const makeUrl of proxies) {
+      try {
+        const r = await Promise.race([
+          fetch(makeUrl(url)).then(r => r.json().catch(() => r.text())),
+          new Promise((_, rj) => setTimeout(() => rj(new Error("timeout")), 8000))
+        ]);
+        const html = typeof r === "string" ? r : r?.contents || r?.body || "";
+        if (html && html.length > 200) return html;
+      } catch {}
+    }
+    return null;
+  };
+
   const analyzeProduct = async (b64, mtype, url) => {
     setLoading(true); setLoadMsg("Produkt analysieren…");
     let imageB64=b64, imageMtype=mtype;
-    if (!b64&&url) {
-      setLoadMsg("Seite laden…");
+    if (!b64 && url) {
+      setLoadMsg("Produktseite wird geladen…");
+      let title = "", desc = "", body = "", html = null;
       try {
-        const html=await Promise.race([fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`).then(r=>r.json()).then(d=>d?.contents||""),new Promise((_,r)=>setTimeout(()=>r(""),12000))]);
-        if(html){
-          const title=html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)/i)?.[1]||html.match(/<title[^>]*>([^<]+)/i)?.[1]||"";
-          const desc=html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)/i)?.[1]||"";
-          const body=html.replace(/<script[\s\S]*?<\/script>/gi,"").replace(/<style[\s\S]*?<\/style>/gi,"").replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim().slice(0,2000);
-          const imgSrc=html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)/i)?.[1];
-          if(imgSrc){try{const abs=imgSrc.startsWith("http")?imgSrc:new URL(imgSrc,url).href;const blob=await Promise.race([fetch(`https://images.weserv.nl/?url=${encodeURIComponent(abs)}&output=jpg&w=800`).then(r=>r.ok?r.blob():null),new Promise((_,r)=>setTimeout(()=>r(null),6000))]);if(blob?.size>1000){imageMtype="image/jpeg";imageB64=await fileToB64(blob);}}catch{}}
-          const mc=[]; if(imageB64)mc.push({type:"image",source:{type:"base64",media_type:imageMtype,data:imageB64}}); mc.push({type:"text",text:`URL:${url}\nTitel:${title}\nBeschreibung:${desc}\nInhalt:${body}`});
-          const res=await callClaude(`Product analyst for AI video. Respond ONLY as JSON: {"productName":"","colors":[],"usps":["","","","",""],"suggestedDescription":"","mockupPrompts":[{"setting":"Studio","prompt":""},{"setting":"Lifestyle","prompt":""},{"setting":"Abstract","prompt":""}]}`,mc,600);
-          const a=parseJ(res)||{suggestedDescription:title,usps:[],colors:[],mockupPrompts:[]};
-          const{mockupPrompts,...analyzed}=a;
-          await onSave({...proj,productData:{imageB64,mediaType:imageMtype,imageUrl:url,analyzed,mockupPrompts:mockupPrompts||[]},proj:{...proj.proj,product:analyzed.suggestedDescription||proj.proj?.product}});
-          setLoading(false); return;
+        html = await fetchPageHtml(url);
+      } catch {}
+
+      if (html) {
+        title = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)/i)?.[1]
+             || html.match(/<title[^>]*>([^<]+)/i)?.[1] || "";
+        desc  = html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)/i)?.[1] || "";
+        body  = html.replace(/<script[\s\S]*?<\/script>/gi,"").replace(/<style[\s\S]*?<\/style>/gi,"").replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim().slice(0,2000);
+        // Try to load og:image
+        const imgSrc = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)/i)?.[1];
+        if (imgSrc) {
+          try {
+            const abs = imgSrc.startsWith("http") ? imgSrc : new URL(imgSrc, url).href;
+            const blob = await Promise.race([
+              fetch(`https://images.weserv.nl/?url=${encodeURIComponent(abs)}&output=jpg&w=800`).then(r => r.ok ? r.blob() : null),
+              new Promise((_, r) => setTimeout(() => r(null), 6000))
+            ]);
+            if (blob?.size > 1000) { imageMtype = "image/jpeg"; imageB64 = await fileToB64(blob); }
+          } catch {}
         }
-      } catch { await err("Seite nicht lesbar — Bild hochladen"); setLoading(false); return; }
+      } else {
+        // Page could not be loaded — extract product name from URL slug and proceed anyway
+        const slug = url.split("/").filter(Boolean).pop()?.replace(/-/g," ") || "";
+        title = slug;
+        setLoadMsg("Seite nicht erreichbar — analysiere mit URL…");
+        await sleep(1000);
+      }
+
+      setLoadMsg("KI analysiert Produkt…");
+      const mc = [];
+      if (imageB64) mc.push({type:"image",source:{type:"base64",media_type:imageMtype,data:imageB64}});
+      mc.push({type:"text",text:`Product URL: ${url}\nProduct Name: ${title}\nDescription: ${desc}\nPage content: ${body || "not available"}`});
+      try {
+        const res = await callClaude(
+          `Product analyst for AI video ads. Analyze this product and respond ONLY as JSON: {"productName":"","colors":[],"usps":["","","","",""],"suggestedDescription":"1-2 sentences","mockupPrompts":[{"setting":"Studio","prompt":""},{"setting":"Lifestyle","prompt":""},{"setting":"Abstract","prompt":""}]}`,
+          mc, 700
+        );
+        const a = parseJ(res) || {suggestedDescription: title, usps:[], colors:[], mockupPrompts:[]};
+        const {mockupPrompts, ...analyzed} = a;
+        await onSave({...proj, productData:{imageB64, mediaType:imageMtype, imageUrl:url, analyzed, mockupPrompts:mockupPrompts||[]}, proj:{...proj.proj, product:analyzed.suggestedDescription||proj.proj?.product}});
+        setLoading(false); return;
+      } catch(e) { await err(`Fehler: ${e.message}`); setLoading(false); return; }
     }
     try {
       const res=await callClaude(`Product analyst for AI video. Respond ONLY as JSON: {"productName":"","colors":[],"usps":["","","","",""],"suggestedDescription":"","mockupPrompts":[{"setting":"Studio","prompt":""},{"setting":"Lifestyle","prompt":""},{"setting":"Abstract","prompt":""}]}`,[{role:"user",content:[{type:"image",source:{type:"base64",media_type:imageMtype,data:imageB64}},{type:"text",text:"Analyze this product image."}]}],600);
