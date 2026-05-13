@@ -479,21 +479,26 @@ function ProjView({ proj, brand, qfEnabled, onQfToggle, onBack, onSave, setP, on
   const err = async msg => { setLoadMsg(msg); await sleep(2500); };
 
   const fetchPageHtml = async (url) => {
-    const proxies = [
-      u => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`,
-      u => `https://corsproxy.io/?${encodeURIComponent(u)}`,
-      u => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
-    ];
-    for (const makeUrl of proxies) {
-      try {
-        const r = await Promise.race([
-          fetch(makeUrl(url)).then(r => r.json().catch(() => r.text())),
-          new Promise((_, rj) => setTimeout(() => rj(new Error("timeout")), 8000))
-        ]);
-        const html = typeof r === "string" ? r : r?.contents || r?.body || "";
-        if (html && html.length > 200) return html;
-      } catch {}
-    }
+    try {
+      const r = await Promise.race([
+        fetch("/api/scrape", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url }),
+        }).then(r => r.json()),
+        new Promise((_, rj) => setTimeout(() => rj(new Error("timeout")), 15000))
+      ]);
+      // Shopify JSON API response
+      if (r?.shopify) {
+        const p = r.shopify;
+        const title = p.title || "";
+        const desc = (p.body_html || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 1500);
+        const imgSrc = p.images?.[0]?.src || p.image?.src || "";
+        return { title, desc, body: desc, imgSrc };
+      }
+      // HTML response
+      if (r?.html && r.html.length > 200) return r.html;
+    } catch {}
     return null;
   };
 
@@ -508,21 +513,38 @@ function ProjView({ proj, brand, qfEnabled, onQfToggle, onBack, onSave, setP, on
       } catch {}
 
       if (html) {
-        title = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)/i)?.[1]
-             || html.match(/<title[^>]*>([^<]+)/i)?.[1] || "";
-        desc  = html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)/i)?.[1] || "";
-        body  = html.replace(/<script[\s\S]*?<\/script>/gi,"").replace(/<style[\s\S]*?<\/style>/gi,"").replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim().slice(0,2000);
-        // Try to load og:image
-        const imgSrc = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)/i)?.[1];
-        if (imgSrc) {
-          try {
-            const abs = imgSrc.startsWith("http") ? imgSrc : new URL(imgSrc, url).href;
-            const blob = await Promise.race([
-              fetch(`https://images.weserv.nl/?url=${encodeURIComponent(abs)}&output=jpg&w=800`).then(r => r.ok ? r.blob() : null),
-              new Promise((_, r) => setTimeout(() => r(null), 6000))
-            ]);
-            if (blob?.size > 1000) { imageMtype = "image/jpeg"; imageB64 = await fileToB64(blob); }
-          } catch {}
+        if (typeof html === "object") {
+          // Structured response from Shopify API
+          title = html.title || "";
+          desc  = html.desc  || "";
+          body  = html.body  || "";
+          const imgSrc = html.imgSrc;
+          if (imgSrc) {
+            try {
+              const blob = await Promise.race([
+                fetch(`https://images.weserv.nl/?url=${encodeURIComponent(imgSrc)}&output=jpg&w=800`).then(r => r.ok ? r.blob() : null),
+                new Promise((_, r) => setTimeout(() => r(null), 6000))
+              ]);
+              if (blob?.size > 1000) { imageMtype = "image/jpeg"; imageB64 = await fileToB64(blob); }
+            } catch {}
+          }
+        } else {
+          // Raw HTML response
+          title = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)/i)?.[1]
+               || html.match(/<title[^>]*>([^<]+)/i)?.[1] || "";
+          desc  = html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)/i)?.[1] || "";
+          body  = html.replace(/<script[\s\S]*?<\/script>/gi,"").replace(/<style[\s\S]*?<\/style>/gi,"").replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim().slice(0,2000);
+          const imgSrc = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)/i)?.[1];
+          if (imgSrc) {
+            try {
+              const abs = imgSrc.startsWith("http") ? imgSrc : new URL(imgSrc, url).href;
+              const blob = await Promise.race([
+                fetch(`https://images.weserv.nl/?url=${encodeURIComponent(abs)}&output=jpg&w=800`).then(r => r.ok ? r.blob() : null),
+                new Promise((_, r) => setTimeout(() => r(null), 6000))
+              ]);
+              if (blob?.size > 1000) { imageMtype = "image/jpeg"; imageB64 = await fileToB64(blob); }
+            } catch {}
+          }
         }
       } else {
         // Page could not be loaded — extract product name from URL slug and proceed anyway
