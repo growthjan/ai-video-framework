@@ -284,24 +284,26 @@ function DashView({ brand, projects, onBack, onFoundation, onNew, onOpen, onDele
         } catch (e) { webText = ""; }
       }
 
-      // Build message content
+      // Build message - textMsg MUST be defined first
       setAnalMsg("KI analysiert…");
+      let textMsg = "Analyze this brand guide thoroughly. Extract ALL of the following:\n1. Exact hex color codes (e.g. #BF034B)\n2. Exact font/typeface names\n3. Logo usage rules\n4. Visual dos and donts\n5. Photography/imagery style\n6. Tone of voice rules\n\nRespond ONLY with this exact JSON (no markdown, no extra text):\n{\"visualBible\":\"3-4 sentences about overall aesthetic, imagery style and cinematic feel\",\"styleTokens\":\"camera style, lighting, pacing, color grading, what to avoid\",\"assetNotes\":\"exact hex codes, exact font names, logo rules, dos and donts\"}";
+
+      // Append PDF text if extracted successfully
+      if (pdfText) {
+        textMsg += "\n\nBrand Guide content:\n" + pdfText;
+      }
+      if (webUrl.trim()) {
+        textMsg += "\n\nWebsite: " + webUrl + (webText ? "\n" + webText : "");
+      }
+
+      // Build content array
       const contentArr = [];
-      if (pdfB64) {
+      if (pdfB64 && !pdfText) {
+        // Only send binary PDF if text extraction failed AND PDF is likely small enough
         const isPdf = pdfMtype === "application/pdf" || pdfName.toLowerCase().endsWith(".pdf");
-        if (isPdf) {
-          if (pdfText) {
-            // Use extracted text (avoids Vercel 4.5MB limit)
-            textMsg += "\n\nBrand Guide PDF content:\n" + pdfText;
-          } else {
-            // Fallback: send as binary document (works for small PDFs)
-            contentArr.push({ type: "document", source: { type: "base64", media_type: "application/pdf", data: pdfB64 } });
-          }
-        }
+        if (isPdf) contentArr.push({ type: "document", source: { type: "base64", media_type: "application/pdf", data: pdfB64 } });
       }
       if (shotB64) contentArr.push({ type: "image", source: { type: "base64", media_type: shotType, data: shotB64 } });
-      let textMsg = "Analyze this brand guide thoroughly. Extract ALL of the following:\n1. Exact hex color codes (e.g. #BF034B)\n2. Exact font/typeface names\n3. Logo usage rules\n4. Visual dos and donts\n5. Photography/imagery style\n6. Tone of voice rules\n\nRespond ONLY with this exact JSON (no markdown, no extra text):\n{\"visualBible\":\"[3-4 sentences: overall aesthetic, imagery style, mood, cinematic feel]\",\"styleTokens\":\"[camera style, lighting, pacing, color grading, what to avoid — all as one text block]\",\"assetNotes\":\"[exact hex codes, exact font names, logo rules, dos and donts — all as one text block]\"}";
-      if (webUrl.trim()) textMsg += "\n\nWebsite: " + webUrl + (webText ? "\n" + webText : "");
       contentArr.push({ type: "text", text: textMsg });
 
       // Call Claude
