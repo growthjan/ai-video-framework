@@ -1,21 +1,29 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "./lib/supabase";
 
-// ─── PDF Text Extractor (client-side, no size limits) ────────────────────────
+// ─── PDF Text Extractor (npm pdfjs-dist, runs in browser) ───────────────────
+let _pdfjsLib = null;
+const getPdfjsLib = async () => {
+  if (_pdfjsLib) return _pdfjsLib;
+  _pdfjsLib = await import("pdfjs-dist");
+  // Use bundled worker
+  _pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.mjs", import.meta.url).href;
+  return _pdfjsLib;
+};
 const extractPdfText = async (file) => {
   try {
     const arrayBuffer = await file.arrayBuffer();
-    // Dynamic import of PDF.js from CDN
-    const pdfjsLib = await import("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.min.mjs");
-    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.worker.min.mjs";
+    const pdfjsLib = await getPdfjsLib();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
     let text = "";
     for (let i = 1; i <= pdf.numPages; i++) {
       const page = await pdf.getPage(i);
       const content = await page.getTextContent();
-      text += content.items.map(item => item.str).join(" ") + "\n";
+      text += content.items.map(item => item.str || "").join(" ") + "\n";
     }
-    return text.trim().slice(0, 15000); // Max 15k chars
+    const result = text.trim().slice(0, 20000);
+    console.log("PDF extracted:", result.length, "chars, first 200:", result.slice(0, 200));
+    return result;
   } catch (e) {
     console.error("PDF extraction failed:", e);
     return null;
@@ -252,7 +260,7 @@ function DashView({ brand, projects, onBack, onFoundation, onNew, onOpen, onDele
   const [saved, setSaved] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [analMsg, setAnalMsg] = useState("");
-  const [pdfB64, setPdfB64] = useState(null); const [pdfName, setPdfName] = useState(""); const [pdfMtype, setPdfMtype] = useState("application/pdf"); const [pdfText, setPdfText] = useState(null);
+  const [pdfB64, setPdfB64] = useState(null); const [pdfName, setPdfName] = useState(""); const [pdfMtype, setPdfMtype] = useState("application/pdf"); const [pdfText, setPdfText] = useState(null); const [pdfLoading, setPdfLoading] = useState(false);
   const [webUrl, setWebUrl] = useState("");
   const [shotB64, setShotB64] = useState(null); const [shotType, setShotType] = useState("");
   const pdfRef=useRef(); const shotRef=useRef();
@@ -369,14 +377,34 @@ function DashView({ brand, projects, onBack, onFoundation, onNew, onOpen, onDele
           <div>
             <FieldLabel>Quellen für automatische Analyse</FieldLabel>
             <div style={{display:"flex",gap:6,marginBottom:8}}>
-              <input ref={pdfRef} type="file" accept="application/pdf,.doc,.docx" onChange={async e=>{const f=e.target.files[0];if(f){setPdfName(f.name);setPdfMtype(f.type||'application/pdf');setPdfB64(await fileToB64(f));const txt=await extractPdfText(f);setPdfText(txt);}}} style={{display:"none"}} />
+              <input ref={pdfRef} type="file" accept="application/pdf,.doc,.docx" onChange={async e=>{
+                    const f=e.target.files[0];
+                    if(!f) return;
+                    setPdfLoading(true);
+                    setPdfName(f.name);
+                    setPdfMtype(f.type||"application/pdf");
+                    try {
+                      const [b64, txt] = await Promise.all([fileToB64(f), extractPdfText(f)]);
+                      setPdfB64(b64);
+                      setPdfText(txt);
+                      console.log("PDF ready:", f.name, "text extracted:", !!txt, "chars:", txt?.length);
+                    } catch(err) {
+                      console.error("PDF upload error:", err);
+                    }
+                    setPdfLoading(false);
+                  }} style={{display:"none"}} />
               {pdfB64
-                ? <FileTag name={pdfName} onRemove={()=>{setPdfB64(null);setPdfName("");setPdfText(null);}} />
-                : <button onClick={()=>pdfRef.current?.click()}
-                    onDragOver={e=>{e.preventDefault();e.currentTarget.style.background=`${brand.color}18`;e.currentTarget.style.borderColor=brand.color;}}
-                    onDragLeave={e=>{e.currentTarget.style.background=`${brand.color}08`;e.currentTarget.style.borderColor=`${brand.color}66`;}}
-                    onDrop={async e=>{e.preventDefault();e.currentTarget.style.background=`${brand.color}08`;e.currentTarget.style.borderColor=`${brand.color}66`;const f=e.dataTransfer.files[0];if(f){setPdfName(f.name);setPdfB64(await fileToB64(f));}}}
-                    style={{flex:1,padding:"7px 10px",borderRadius:8,border:`1.5px dashed ${brand.color}66`,background:`${brand.color}08`,color:brand.color,fontSize:11,fontWeight:500,cursor:"pointer",transition:"background .15s,border-color .15s"}}>↑ Brand Guide PDF / DOC</button>}
+                ? <FileTag name={pdfName} onRemove={()=>{setPdfB64(null);setPdfName("");setPdfText(null);setPdfLoading(false);}} />
+                : pdfLoading
+                  ? <div style={{flex:1,padding:"7px 10px",borderRadius:8,border:`1.5px solid ${brand.color}`,background:`${brand.color}08`,color:brand.color,fontSize:11,display:"flex",alignItems:"center",gap:7,fontFamily:"inherit"}}><SpinInline col={brand.color} />PDF wird verarbeitet…</div>
+                  : <button
+                      onClick={()=>pdfRef.current?.click()}
+                      onDragOver={e=>{e.preventDefault();e.currentTarget.style.background=`${brand.color}18`;}}
+                      onDragLeave={e=>{e.currentTarget.style.background=`${brand.color}08`;}}
+                      onDrop={async e=>{e.preventDefault();const f=e.dataTransfer.files[0];if(!f)return;setPdfLoading(true);setPdfName(f.name);setPdfMtype(f.type||"application/pdf");const[b64,txt]=await Promise.all([fileToB64(f),extractPdfText(f)]);setPdfB64(b64);setPdfText(txt);setPdfLoading(false);}}
+                      style={{flex:1,padding:"7px 10px",borderRadius:8,border:`1.5px dashed ${brand.color}66`,background:`${brand.color}08`,color:brand.color,fontSize:11,fontWeight:500,cursor:"pointer",fontFamily:"inherit"}}>
+                      ↑ Brand Guide PDF — klicken oder ziehen
+                    </button>}
               <input value={webUrl} onChange={e=>setWebUrl(e.target.value)} placeholder="🌐 Website-URL" style={{flex:2}} />
             </div>
             <div style={{marginBottom:10}}>
