@@ -231,7 +231,7 @@ function DashView({ brand, projects, onBack, onFoundation, onNew, onOpen, onDele
   const [saved, setSaved] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [analMsg, setAnalMsg] = useState("");
-  const [pdfB64, setPdfB64] = useState(null); const [pdfName, setPdfName] = useState("");
+  const [pdfB64, setPdfB64] = useState(null); const [pdfName, setPdfName] = useState(""); const [pdfMtype, setPdfMtype] = useState("application/pdf");
   const [webUrl, setWebUrl] = useState("");
   const [shotB64, setShotB64] = useState(null); const [shotType, setShotType] = useState("");
   const pdfRef=useRef(); const shotRef=useRef();
@@ -265,11 +265,19 @@ function DashView({ brand, projects, onBack, onFoundation, onNew, onOpen, onDele
       setAnalMsg("KI analysiert…");
 
       // Build content array - always use array format for consistency
-      const contentArr = [];
-      if (pdfB64) contentArr.push({type:"document", source:{type:"base64", media_type:"application/pdf", data:pdfB64}});
-      if (shotB64) contentArr.push({type:"image", source:{type:"base64", media_type:shotType, data:shotB64}});
       const textParts = ["Analyze all provided brand materials and respond with the JSON object."];
       if (webUrl.trim()) textParts.push("Website URL: " + webUrl + (extra ? "\nWebsite content: " + extra : " (could not load content)"));
+      const contentArr = [];
+      if (pdfB64) {
+        // Claude API only supports PDFs as documents, not docx
+        const isPdf = pdfMtype === "application/pdf" || pdfName.toLowerCase().endsWith(".pdf");
+        if (isPdf) {
+          contentArr.push({type:"document", source:{type:"base64", media_type:"application/pdf", data:pdfB64}});
+        } else {
+          textParts.push("Note: A brand guide document was uploaded (" + pdfName + ") but could not be read directly. Please use the website URL for analysis.");
+        }
+      }
+      if (shotB64) contentArr.push({type:"image", source:{type:"base64", media_type:shotType, data:shotB64}});
       contentArr.push({type:"text", text:textParts.join("\n\n")});
 
       const messages = [{role:"user", content: contentArr}];
@@ -327,7 +335,7 @@ function DashView({ brand, projects, onBack, onFoundation, onNew, onOpen, onDele
           <div>
             <FieldLabel>Quellen für automatische Analyse</FieldLabel>
             <div style={{display:"flex",gap:6,marginBottom:8}}>
-              <input ref={pdfRef} type="file" accept="application/pdf,.doc,.docx" onChange={async e=>{const f=e.target.files[0];if(f){setPdfName(f.name);setPdfB64(await fileToB64(f));}}} style={{display:"none"}} />
+              <input ref={pdfRef} type="file" accept="application/pdf,.doc,.docx" onChange={async e=>{const f=e.target.files[0];if(f){setPdfName(f.name);setPdfMtype(f.type||'application/pdf');setPdfB64(await fileToB64(f));}}} style={{display:"none"}} />
               {pdfB64
                 ? <FileTag name={pdfName} onRemove={()=>{setPdfB64(null);setPdfName("");}} />
                 : <button onClick={()=>pdfRef.current?.click()}
